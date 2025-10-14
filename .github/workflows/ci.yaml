@@ -1,41 +1,84 @@
 name: python-app-ci
 
+# Trigger workflow on push to main branch
 on:
   push:
     branches: [ main ]
 
+# Environment variables for reuse
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
+  BUILDKIT_PROGRESS: plain  # For cleaner build output
+
 jobs:
+  # Job to build, scan and push Docker image
   build-and-push:
     runs-on: ubuntu-latest
-
+    
     steps:
+      # Step 1: Checkout repository code
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2  # Using v4 for better performance v4.0.0
+        with:
+          fetch-depth: 1  # Shallow clone for faster checkout
 
+      # Step 2: Set up Docker Buildx for enhanced build features
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # Using specific commit for stability v3.11.1
+        with:
+          buildkitd-flags: --debug  # Enable BuildKit debugging
 
+      # Step 3: Cache Docker layers for faster builds
+      - name: Cache Docker layers
+        uses: actions/cache@13aacd865c20de90d75de3b17ebe84f7a17d57d2 # Using specific commit for stability v.4.0.0
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      # Step 4: Login to Docker Hub
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # Using specific commit for stability v3.2.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build the Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0 .
-
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@master
+      # Step 5: Build and cache Docker image
+      - name: Build Docker image
+        uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318  # Using build-push-action for better caching v6.0.0
         with:
-          image-ref: ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
+          context: .
+          push: false  # Don't push yet, we'll scan first
+          tags: ${{ env.DOCKER_IMAGE }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          load: true  # Load the image locally for scanning
+
+      # Step 6: Scan image for vulnerabilities
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2  # Using specific hash commit for stability v0.28.0
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}
           format: 'table'
-          exitcode: '1'  
-          ignore-unfixed: true  # Ignore issues that don't have a fix
+          exit-code: '1'
+          ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
-  
-      - name: Push the Docker image to Docker Hub
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
+          timeout: '5m'  # Set timeout to avoid hanging
 
+      # Step 7: Push image to Docker Hub
+      - name: Push Docker image
+        uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # Using specific commit for stability v6.0.0
+        with:
+          context: .
+          push: true
+          tags: ${{ env.DOCKER_IMAGE }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      # Step 8: Clean up cache
+      - name: Move cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
