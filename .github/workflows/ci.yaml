@@ -32,6 +32,6 @@ jobs:
           format: 'table'
           exitcode: '1'  
           ignore-unfixed: true  # Ignore issues that don't have a fix
-          severity: 'CRITICAL,High'
+          severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
 
