@@ -34,4 +34,8 @@ jobs:
           ignore-unfixed: true  # Ignore issues that don't have a fix
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
+  
+      - name: Push the Docker image to Docker Hub
+        run: |
+          doccker push ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
 
