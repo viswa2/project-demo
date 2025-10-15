@@ -90,7 +90,7 @@ jobs:
 
       # Step 9: Login to Amazon ECR
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@062b18b96b476f287715390cd7a963011834f07d  # v2.0.1
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
         id: login-ecr
 
       # Step 10: Tag and push image to Amazon ECR
