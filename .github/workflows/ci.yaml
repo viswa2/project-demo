@@ -81,7 +81,7 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
   push-to-ecr:
-    runs-on: ubuntu-latest
+    #runs-on: ubuntu-latest
     needs: build-and-push-to-dockerhub
     steps:
       # Step 8: Configure AWS credentials
