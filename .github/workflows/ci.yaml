@@ -14,53 +14,66 @@ env:
   BUILDKIT_PROGRESS: plain  # For cleaner build output
 
 jobs:
-  # Job to build, scan and push Docker image
-  build-and-push-to-dockerhub:
+  build-scan-and-push:
     runs-on: ubuntu-latest
-    
     steps:
       # Step 1: Checkout repository code
       - name: Checkout code
-        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2  # Using v4 for better performance v4.0.0
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2  #v4.0.0
         with:
           fetch-depth: 1  # Shallow clone for faster checkout
 
       # Step 2: Set up Docker Buildx for enhanced build features
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # Using specific commit for stability v3.11.1
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # Using specific commit for stability v3.11.1
         with:
           buildkitd-flags: --debug  # Enable BuildKit debugging
 
-      # Step 3: Cache Docker layers for faster builds
+      # Step 3: Cache Docker layers
       - name: Cache Docker layers
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # Using specific commit for stability v.4.3.0
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # Using specific commit for stability v.4.3.0
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-buildx-
 
-      # Step 4: Login to Docker 
-      - name: Login to Docker 
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772  # Using specific commit for stability v3.4.0
+      # Step 4: Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # Using specific commit for stability v3.4.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # Step 5: Build and cache Docker image
+      # Step 5: Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@00943011d9042930efac3dcd3a170e4273319bc8 # v5.1.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 6: Login to Amazon ECR
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+        id: login-ecr
+
+      # Step 7: Build Docker image with multiple tags
       - name: Build Docker image
-        uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318  # Using build-push-action for better caching v6.0.0
+        uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # Using specific commit for stability v6.0.0
         with:
           context: .
           push: false  # Don't push yet, we'll scan first
-          tags: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            ${{ env.DOCKER_IMAGE }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
-          load: true  # Load the image locally for scanning
+          load: true
 
-      # Step 6: Scan image for vulnerabilities
+      # Step 8: Scan image for vulnerabilities
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2  # Using specific hash commit for stability v0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # Using specific hash commit for stability v0.28.0
         with:
           image-ref: ${{ env.DOCKER_IMAGE }}
           format: 'table'
@@ -68,48 +81,21 @@ jobs:
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
           vuln-type: 'os,library'
-          timeout: '5m'  # Set timeout to avoid hanging
+          timeout: '5m'
 
-      # Step 7: Push image to Docker Hub
-      - name: Push Docker image
+      # Step 9: Push images to registries
+      - name: Push to Docker Hub and ECR
         uses: docker/build-push-action@c382f710d39a5bb4e430307530a720f50c2d3318 # Using specific commit for stability v6.0.0
         with:
           context: .
           push: true
-          tags: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            ${{ env.DOCKER_IMAGE }}
+            ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max    
 
-  push-to-ecr:
-    #runs-on: ubuntu-latest
-    needs: build-and-push-to-dockerhub
-    steps:
-      # Step 8: Configure AWS credentials
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@00943011d9042930efac3dcd3a170e4273319bc8  # v5.1.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # Step 9: Login to Amazon ECR
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
-        id: login-ecr
-
-      # Step 10: Tag and push image to Amazon ECR
-      - name: Tag and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
-          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-        run: |
-          # Tag image for ECR
-          docker tag ${{ env.DOCKER_IMAGE }} $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          # Push image to ECR
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-      # Step 11: Clean up cache
+      # Step 10: Clean up cache
       - name: Move cache
         run: |
           rm -rf /tmp/.buildx-cache
