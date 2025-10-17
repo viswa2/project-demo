@@ -23,10 +23,6 @@ jobs:
         run: |
           echo "Docker Version:"
           docker --version
-          echo "\nDocker Info:"
-          docker info
-          echo "\nDocker Compose Version:"
-          docker compose version
           echo "\nBuildx Version:"
           docker buildx version
 
@@ -40,7 +36,7 @@ jobs:
         with:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           wait: 120s
-          kubectl_version: latest
+          kubectl_version: 'latest'
 
       - name: Get cluster info
         run: |
