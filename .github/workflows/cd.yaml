@@ -1,0 +1,102 @@
+name: CD - Deploy to Kind
+
+on:
+  workflow_run:
+    workflows: ["python-app-ci"]
+    types:
+      - completed
+    branches: [main]
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
+  KIND_CLUSTER_NAME: local-cluster
+
+jobs:
+  deploy-to-kind:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@1e31de5234b9f8995739874a8ce0492dc87873e2 # v4.0.0
+
+      - name: Check Docker Installation
+        run: |
+          echo "Docker Version:"
+          docker --version
+          echo "\nDocker Info:"
+          docker info
+          echo "\nDocker Compose Version:"
+          docker compose version
+          echo "\nBuildx Version:"
+          docker buildx version
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Setup Kind
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          wait: 120s
+          kubectl_version: latest
+
+      - name: Get cluster info
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Load Docker image into Kind
+        run: |
+          # Pull the image that was just built in CI
+          docker pull ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}
+          
+          # Load the image into Kind
+          kind load docker-image ${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }} --name ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Deploy to Kind
+        run: |
+          # Replace environment variables in deployment.yaml
+          envsubst < k8s/deployment.yaml > k8s/deployment_resolved.yaml
+          
+          # Apply the deployment
+          kubectl apply -f k8s/deployment_resolved.yaml
+          
+          # Wait for deployment to be ready
+          kubectl wait --for=condition=available --timeout=300s deployment/python-flask-app
+
+      - name: Verify Deployment
+        run: |
+          # Wait for pods to be ready
+          sleep 30
+          
+          # Get pod status
+          echo "Pod Status:"
+          kubectl get pods -o wide
+          
+          # Get service details
+          echo "Service Details:"
+          kubectl get services
+          
+          # Get pod logs
+          echo "Application Logs:"
+          kubectl logs -l app=python-flask-app --tail=50
+
+      - name: Test Application
+        run: |
+          # Port-forward the service
+          kubectl port-forward service/python-flask-app-service 30000:80 &
+          sleep 10
+          
+          # Test the endpoint
+          curl -v http://localhost:30000/
+          
+          # Get detailed deployment status
+          kubectl describe deployment python-flask-app
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          kind delete cluster --name ${{ env.KIND_CLUSTER_NAME }}
+          echo "Kind cluster cleaned up"
