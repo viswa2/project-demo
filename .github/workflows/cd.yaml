@@ -8,7 +8,8 @@ on:
     branches: [main]
 
 env:
-  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app:1.0.0
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/simple-python-flask-app
+  IMAGE_TAG: 1.0.0
   KIND_CLUSTER_NAME: local-cluster
 
 jobs:
@@ -23,20 +24,24 @@ jobs:
         run: |
           echo "Docker Version:"
           docker --version
+          echo "\nDocker Info:"
+          docker info
           echo "\nBuildx Version:"
           docker buildx version
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+          kubectl version --client
 
       - name: Setup Kind
         uses: helm/kind-action@v1.8.0
         with:
           cluster_name: ${{ env.KIND_CLUSTER_NAME }}
           wait: 120s
-          kubectl_version: 'latest'
+          skipClusterCreation: false
 
       - name: Get cluster info
         run: |
