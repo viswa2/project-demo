@@ -65,7 +65,7 @@ jobs:
           kubectl apply -f k8s/deployment_resolved.yaml
           
           # Wait for deployment to be ready
-          kubectl wait --for=condition=available --timeout=300s deployment/python-flask-app
+          kubectl wait --for=condition=available --timeout=150s deployment/python-flask-app
 
       - name: Verify Deployment
         run: |
