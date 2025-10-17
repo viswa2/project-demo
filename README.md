@@ -207,6 +207,17 @@ Potential future enhancements:
 4. Health checks after container builds
 5. Dynamic image tagging with git SHA
 
+Our CD pipeline (`cd.yaml`) Implements to deploy the ci image into kind cluster:
+
+1. Verfied docker installed or not
+2. Insatll kubectl utility
+3. Setup the kind cluster and verify the cluster info
+4. Load the docker image to kind cluster
+5. Deploy to kind cluster
+6. Verify the deployment by using kubectl commands i.e (`kubectl get pods -o wide, kubectl get services`)
+7. Test the application by using `curl -v http://localhost:30000/`
+8. Cleanup
+
 ## 📝 Contributing
 
 Feel free to contribute to this project by submitting pull requests or creating issues for improvements.
